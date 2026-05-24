@@ -795,6 +795,8 @@
   const WEBHOOK = 'https://sumitchavan.app.n8n.cloud/webhook/b385fd66-cea1-4bf2-bd71-dc64f9b862fd/chat';
   let isLoading = false;
   let messageCount = 0;
+  let userEmail = null;
+  let awaitingEmail = false;
 
   // ── ELEMENTS ──
   const chatInput  = document.getElementById('chat-input');
@@ -914,10 +916,56 @@
       .replace(/\n/g, '<br>');
   }
 
+  // ── EMAIL VALIDATION ──
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
   // ── SEND ──
   async function sendMessage() {
     const text = chatInput.value.trim();
     if (!text || isLoading) return;
+
+    if (!userEmail) {
+      if (!awaitingEmail) {
+        awaitingEmail = true;
+        removeWelcome();
+        addMessage('user', text);
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+        charCount.textContent = '0 / 4000';
+        sessionStorage.setItem('pendingMessage', text);
+        addMessage('ai', 'Before we begin, please share your email address so I can send you a summary of our conversation.');
+        chatInput.placeholder = 'Enter your email address...';
+        return;
+      } else {
+        if (!isValidEmail(text)) {
+          addMessage('user', text);
+          chatInput.value = '';
+          chatInput.style.height = 'auto';
+          charCount.textContent = '0 / 4000';
+          addMessage('ai', "That doesn't look like a valid email. Please enter a valid email address (e.g. name@example.com).");
+          return;
+        }
+        userEmail = text;
+        awaitingEmail = false;
+        addMessage('user', text);
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+        charCount.textContent = '0 / 4000';
+        chatInput.placeholder = 'Ask your executive assistant...';
+        addMessage('ai', `Perfect! I'll send a summary to ${userEmail} after each response. Now, how can I help you?`);
+        const pending = sessionStorage.getItem('pendingMessage');
+        if (pending) {
+          sessionStorage.removeItem('pendingMessage');
+          setTimeout(() => {
+            chatInput.value = pending;
+            chatInput.dispatchEvent(new Event('input'));
+          }, 600);
+        }
+        return;
+      }
+    }
 
     isLoading = true;
     sendBtn.disabled = true;
@@ -932,7 +980,7 @@
       const res = await fetch(WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: text, email: userEmail })
       });
 
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
